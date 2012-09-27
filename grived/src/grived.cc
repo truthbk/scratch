@@ -9,6 +9,7 @@ grive_sync: AutoSync with Google Drive
 
 #include <cassert>
 #include <cstdlib>
+#include <cstdio> 
 #include <iostream>
 #include <unistd.h>
 #include <dirent.h>
@@ -21,7 +22,7 @@ grive_sync: AutoSync with Google Drive
 
 using namespace std;
 
-static int shutdown;
+static volatile int shutdown;
 
 static void sig_handler(int signo) {
     switch(signo)
@@ -35,6 +36,54 @@ static void sig_handler(int signo) {
     }
 }
 
+void usage(int argc, char **argv) {
+	cout << "Usage: " << basename(argv[0]) << "[options]" << endl;
+	cout << endl << "\t-d DIR\t: GRIVE's root directory" << endl;
+	cout << "\t-h\t: Displays this help message" << endl;
+	return;
+}
+
+Grived::Grived(string path) :
+	g_dir(path)
+{	
+}
+
+Grived::rescan(void)
+{
+    //must now recurse and add watches to subdirs....
+    //Should be refactored into class methods.
+    dirs.push( boost::shared_ptr<string>( new string(g_dir) ) );
+    while(!dirs.empty()) {
+        DIR *dir;
+        int wd;
+
+        struct dirent *dp;
+        struct stat sb;
+
+        if(!(dir = opendir(dirs.front().c_str()))) {
+            //it was likely a file
+            continue;
+        }
+
+        wd = inotify_add_watch( inotfyfd, myqueue.front().c_str(),
+                IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
+        if(wd) 
+        {
+            wds.push_back(wd);
+        }
+
+	/*breadth first search-like ;-) */
+        while((dp = readdir(dir))) {
+            //could use dp->d_type but that's not too portable.
+            lstat( dp->d_name, &sb );
+            if(sb.st_mode & S_IFDIR) 
+            {
+                dirs.push( boost::shared_ptr<string>(new string(dp->d_name)) );
+            }
+        }
+    }
+}
+
 int Main( int argc, char **argv )
 {
     pid_t pid;
@@ -44,11 +93,7 @@ int Main( int argc, char **argv )
     int c, dflag = 0;
 
     string grivedir;
-    std::queue<boost::shared_ptr<string>> dirs;
-    std::vector<int> wds;
-
     struct epoll_event event;
-    std::vector<shared_ptr<epoll_event>> events;
 
     sigset_t origmask;
     sigset_t mask;
@@ -59,6 +104,7 @@ int Main( int argc, char **argv )
         switch(c)
         {
             case 'h':
+		usagge(argc, argv);
                 break;
             case 'd':
                 dflag = 1;
@@ -70,14 +116,16 @@ int Main( int argc, char **argv )
     if(!dflag || !boost::filesystem::exists(grivedir))
     {
         //show help
+	if(dflag)
+	{
+	    cout << "Specified directory doesn't exist." << endl << endl;
+	}
+	usage(argc, argv);
         exit(EXIT_FAILURE);
     }
 
     /* Clone ourselves to make a child */  
     pid = fork(); 
-
-    /* If the pid is less than zero,
-     * something went wrong when forking */
     if (pid < 0) 
     {
         exit(EXIT_FAILURE);
@@ -90,7 +138,6 @@ int Main( int argc, char **argv )
     }
 
     /* child */
-    /* Set the umask to zero */
     umask(0);
 
     pid_t sid;
@@ -122,37 +169,13 @@ int Main( int argc, char **argv )
         perror( "inotify_init" );
     }
 
-    //must not recurse and add watches to subdirs....
-    dirs.push( boost::shared_ptr<string>(new string(argv[1])) );
-    while(!myqueue.empty()) {
-        DIR *dir;
-        int wd;
+    Grived syncer;
+    syncer.rescan();
 
-        struct dirent *dp;
-        struct stat sb;
-
-        if(!(dir = opendir(myqueue.front().c_str()))) {
-            //it was likely a file
-            continue;
-        }
-
-        wd = inotify_add_watch( inotfyfd, myqueue.front().c_str(),
-                IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
-        if(wd) 
-        {
-            wds.push_back(wd);
-        }
-
-        while((dp = readdir(dir))) {
-            //could use dp->d_type but that's not too portable.
-            lstat( dp->d_name, &sb );
-            if(sb.st_mode & S_IFDIR) 
-            {
-                dirs.push( boost::shared_ptr<string>(new string(dp->d_name)) );
-            }
-        }
-    }
-
+    //Apparently after 2.6.8 epoll_create() size argument is ignored, just has to
+    //be >0, no need to have an estimation anymore. This could just as well be
+    //epoll_create(1). But for backwards compatibility we estimate this with the 
+    //number of watches created.
     epollfd = epoll_create(wds.size()); 
     if ( epollfd < 0 ) 
     {
@@ -171,6 +194,7 @@ int Main( int argc, char **argv )
         events.push_back(*ev_ptr);
     }
 
+    //install signal handler to shutdown daemon.
     memset( &sa, 0, sizeof(struct sigaction) );
     sa.sa_handler = sig_handler;
     sa.sa_flags = 0;
@@ -219,7 +243,12 @@ int Main( int argc, char **argv )
 #else
 #define GRIVECMD "grive"
 #endif
+            //ugliest shit of ALL TIME. This is one ugly hack, must be implemented 
+	    //within grive.
             system(GRIVECMD);
+
+	    //TO DO: we have to rescan for new directories, If unwatched dirs found, add watch.
+            syncer.rescan();
         }
     }
     ret = EXIT_SUCCESS;
