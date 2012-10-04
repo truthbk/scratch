@@ -45,41 +45,86 @@ void usage(int argc, char **argv) {
 
 Grived::Grived(string path) :
 	g_dir(path)
-{	
+{
+            //Apparently after 2.6.8 epoll_create() size argument is ignored, just has to
+            //be >0.
+            epollfd = epoll_create(1); 
+            if ( epollfd < 0 ) 
+            {
+                perror( "epoll_create" );
+            }
+
+            //Exception or something....
 }
 
-Grived::rescan(void)
+bool Grived::rescan(void)
 {
+
+    std::queue< string > scanq;
+
     //must now recurse and add watches to subdirs....
     //Should be refactored into class methods.
-    dirs.push( boost::shared_ptr<string>( new string(g_dir) ) );
-    while(!dirs.empty()) {
+    scanq.push( g_dir );
+    while(!scanq.empty()) {
         DIR *dir;
         int wd;
 
         struct dirent *dp;
         struct stat sb;
 
-        if(!(dir = opendir(dirs.front().c_str()))) {
+        if(!(dir = opendir(scanq.front().c_str()))) {
             //it was likely a file
             continue;
         }
 
-        wd = inotify_add_watch( inotfyfd, myqueue.front().c_str(),
-                IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
-        if(wd) 
+        std::string dirstr(scanq.pop());
+
+        //find dir in set...
+        std::unordered_set<std::string>::const_iterator got = dirs.find (dirstr);
+        if (got == dirs.end()) 
         {
-            wds.push_back(wd);
+            //new watch!
+            wd = inotify_add_watch( inotfyfd, dirstr.c_str(),
+                    IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
+            if(wd) 
+            {
+                wds.push_back(wd);
+            }
         }
 
-	/*breadth first search-like ;-) */
+        // breadth first search-like ;-)
+        // we do this regardless in case there are new dirs within that subtree.
         while((dp = readdir(dir))) {
             //could use dp->d_type but that's not too portable.
             lstat( dp->d_name, &sb );
             if(sb.st_mode & S_IFDIR) 
             {
-                dirs.push( boost::shared_ptr<string>(new string(dp->d_name)) );
+                dirs.push( string(dp->d_name) );
             }
+        }
+    }
+}
+
+bool Grived::genEvents(void)
+{
+    std::map<int, boost::shared_ptr<epoll_event> >::const_iterator cit;
+
+    for (int i=0 ; i<wds.size() ; i++)
+    {
+        int wd = wds.at(i);
+        cit = event_map.find(wd);
+        //event not created...
+        if(cit == event_map.end())
+        {
+            boost::shared_ptr<epoll_event> ev_ptr(new epoll_event);
+            ev_ptr->events = EPOLLIN; //no need to be edge triggered, right?
+            ev_ptr->data.fd = wd;
+            epoll_ctl( epollfd, EPOLL_CTL_ADD, wd, ev_ptr );
+            event_map.insert(
+                    std::pair<int, boost::shared_ptr<epoll_event> >( wd, ev_ptr ));
+
+            events.insert(*ev_ptr); //this copies, but it shouldn't be a problem.
+
         }
     }
 }
@@ -87,13 +132,12 @@ Grived::rescan(void)
 int Main( int argc, char **argv )
 {
     pid_t pid;
-    int inotfyfd, epollfd;
+    int inotfyfd;
     int ret;
     int wd_idx = 0;
     int c, dflag = 0;
 
     string grivedir;
-    struct epoll_event event;
 
     sigset_t origmask;
     sigset_t mask;
@@ -104,7 +148,7 @@ int Main( int argc, char **argv )
         switch(c)
         {
             case 'h':
-		usagge(argc, argv);
+                usagge(argc, argv);
                 break;
             case 'd':
                 dflag = 1;
@@ -116,11 +160,11 @@ int Main( int argc, char **argv )
     if(!dflag || !boost::filesystem::exists(grivedir))
     {
         //show help
-	if(dflag)
-	{
-	    cout << "Specified directory doesn't exist." << endl << endl;
-	}
-	usage(argc, argv);
+        if(dflag)
+        {
+            cout << "Specified directory doesn't exist." << endl << endl;
+        }
+        usage(argc, argv);
         exit(EXIT_FAILURE);
     }
 
@@ -171,28 +215,7 @@ int Main( int argc, char **argv )
 
     Grived syncer;
     syncer.rescan();
-
-    //Apparently after 2.6.8 epoll_create() size argument is ignored, just has to
-    //be >0, no need to have an estimation anymore. This could just as well be
-    //epoll_create(1). But for backwards compatibility we estimate this with the 
-    //number of watches created.
-    epollfd = epoll_create(wds.size()); 
-    if ( epollfd < 0 ) 
-    {
-        perror( "epoll_create" );
-        ret = errno;
-        goto cleanup;
-    }
-
-    event.events = EPOLLIN; //no need to be edge triggered, right?
-    typedef std::vector<int>::const_iterator vit;
-    for( vit it = wds.begin() ; it != wds.end() ; ++it )
-    {
-        event.data.fd = *it;
-        epoll_ctl( epollfd, EPOLL_CTL_ADD, *it, &event );
-        boost::shared_ptr<epoll_event> ev_ptr(new epoll_event);
-        events.push_back(*ev_ptr);
-    }
+    syncer.genEvents();
 
     //install signal handler to shutdown daemon.
     memset( &sa, 0, sizeof(struct sigaction) );
@@ -226,7 +249,12 @@ int Main( int argc, char **argv )
     //we're now watching the entire gdrive subtree.
     while(!shutdown) {
 #define GRIVE_IOTO 2000 //couple seconds before timing out.
-        ret = epoll_pwait(epollfd, &events[0], event.size(), GRIVE_IOTO, &origmask);
+        ret = epoll_pwait( 
+                syncer.getPollfd(), 
+                &(syncer.getEvents()[0]), 
+                syncer.getEvents.size(),
+                GRIVE_IOTO,
+                &origmask);
         if(ret < 0 && errno != EINTR) 
         {
             perror("epoll");
@@ -236,6 +264,13 @@ int Main( int argc, char **argv )
         } else if(ret == 0) {
             continue;
         } else {
+            // TODO:
+            // check the event vector, if we have a deleted directory we
+            // need to clean up and deregister that from/with epoll_ctl.
+            //
+            // ----ADD HERE----
+
+            //
             //resync (doesn't matter who triggered inotify event)
             //concerned about infinite inotify triggered loop when syncing.
 #ifdef _DEBUG
@@ -247,8 +282,9 @@ int Main( int argc, char **argv )
 	    //within grive.
             system(GRIVECMD);
 
-	    //TO DO: we have to rescan for new directories, If unwatched dirs found, add watch.
+	    //We have to rescan for new directories, If unwatched dirs found, add watch.
             syncer.rescan();
+            syncer.genEvents();
         }
     }
     ret = EXIT_SUCCESS;

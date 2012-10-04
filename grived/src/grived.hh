@@ -6,15 +6,19 @@
 class Grived {
     public:
         Grived(string);
-	int rescan(void);
-	std::queue<boost::shared_ptr<string>>& getDirs(void);
-	std::vector<boost::shared_ptr<epoll_event>>& getEvents(void);
-        std::vector<int>& getWds(void);
+        bool rescan(void);
+        bool genEvents(void);
+        bool getEvents(void);
+
     private:
-	string g_dir;
-        std::queue<boost::shared_ptr<string>> dirs;
-        std::vector<boost::shared_ptr<epoll_event>> events;
-        std::vector<int> wds;
+        int epollfd;
+        string g_dir;
+        std::unordered_set<std::string> dirs;
+        std::vector< int > wds;
+
+        //should we typedef the type?
+        std::map< int, boost::shared_ptr<epoll_event> > event_map;
+        std::vector< epoll_event> events;
 }
 
 #endif
