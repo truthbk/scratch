@@ -45,6 +45,7 @@ void usage(int argc, char **argv) {
 
 Grived::Grived(string path) :
 	g_dir(path)
+        , events(NULL) 
 {
             //Apparently after 2.6.8 epoll_create() size argument is ignored, just has to
             //be >0.
@@ -57,9 +58,21 @@ Grived::Grived(string path) :
             //Exception or something....
 }
 
+epoll_event * Grived::alloc_events(unsigned int sz)
+{
+    if(events)
+    {
+        delete[] events;
+    }
+    events = new epoll_event[sz](); 
+
+    return events;
+}
+
 bool Grived::rescan(void)
 {
 
+    bool new_dir = false;
     std::queue< string > scanq;
 
     //must now recurse and add watches to subdirs....
@@ -80,15 +93,16 @@ bool Grived::rescan(void)
         std::string dirstr(scanq.pop());
 
         //find dir in set...
-        std::unordered_set<std::string>::const_iterator got = dirs.find (dirstr);
-        if (got == dirs.end()) 
+        bm_t::right_const_iterator riter = wddirmap.right.find(dirstr);
+        if (riter == widdirmap.right.end()) 
         {
             //new watch!
+            new_dirs = true;
             wd = inotify_add_watch( inotfyfd, dirstr.c_str(),
                     IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
             if(wd) 
             {
-                wds.push_back(wd);
+                wddirmap.insert(bm_t::value_type(wd, dirstr));
             }
         }
 
@@ -103,37 +117,24 @@ bool Grived::rescan(void)
             }
         }
     }
-}
 
-bool Grived::genEvents(void)
-{
-    std::map<int, boost::shared_ptr<epoll_event> >::const_iterator cit;
-
-    for (int i=0 ; i<wds.size() ; i++)
+    if(new_dirs)
     {
-        int wd = wds.at(i);
-        cit = event_map.find(wd);
-        //event not created...
-        if(cit == event_map.end())
+        if(!alloc_events(wddirmap.left.size()))
         {
-            boost::shared_ptr<epoll_event> ev_ptr(new epoll_event);
-            ev_ptr->events = EPOLLIN; //no need to be edge triggered, right?
-            ev_ptr->data.fd = wd;
-            epoll_ctl( epollfd, EPOLL_CTL_ADD, wd, ev_ptr );
-            event_map.insert(
-                    std::pair<int, boost::shared_ptr<epoll_event> >( wd, ev_ptr ));
-
-            events.insert(*ev_ptr); //this copies, but it shouldn't be a problem.
-
+            //throw exception
         }
     }
+
+    return new_dirs;
 }
+
 
 int Main( int argc, char **argv )
 {
     pid_t pid;
     int inotfyfd;
-    int ret;
+    int n, ret;
     int wd_idx = 0;
     int c, dflag = 0;
 
@@ -215,7 +216,6 @@ int Main( int argc, char **argv )
 
     Grived syncer;
     syncer.rescan();
-    syncer.genEvents();
 
     //install signal handler to shutdown daemon.
     memset( &sa, 0, sizeof(struct sigaction) );
@@ -248,20 +248,24 @@ int Main( int argc, char **argv )
 
     //we're now watching the entire gdrive subtree.
     while(!shutdown) {
+        bool do_rescan = false;
+        bool do_sync = false;
+
 #define GRIVE_IOTO 2000 //couple seconds before timing out.
-        ret = epoll_pwait( 
+        epoll_event * events = syncer.getEvents();
+        n = epoll_pwait( 
                 syncer.getPollfd(), 
-                &(syncer.getEvents()[0]), 
+                events, 
                 syncer.getEvents.size(),
                 GRIVE_IOTO,
                 &origmask);
-        if(ret < 0 && errno != EINTR) 
+        if(n < 0 && errno != EINTR) 
         {
             perror("epoll");
             goto cleanup;
         } else if (shutdown) {
             break;
-        } else if(ret == 0) {
+        } else if(n == 0) {
             continue;
         } else {
             // TODO:
@@ -269,6 +273,20 @@ int Main( int argc, char **argv )
             // need to clean up and deregister that from/with epoll_ctl.
             //
             // ----ADD HERE----
+            for( int i= 0 ; i<n ; i++ )
+            {
+                //what about EPOLLIN?
+                if ( (events[i].events & EPOLLERR) ||
+                     (events[i].events & EPOLLHUP))
+                {
+                    //some sort of error... should we do anything else?
+                    continue;
+                }
+
+                //resscan.
+                //do_rescan = true;
+                do_sync = true;
+            }
 
             //
             //resync (doesn't matter who triggered inotify event)
@@ -278,13 +296,18 @@ int Main( int argc, char **argv )
 #else
 #define GRIVECMD "grive"
 #endif
-            //ugliest shit of ALL TIME. This is one ugly hack, must be implemented 
-	    //within grive.
-            system(GRIVECMD);
+            if(do_sync)
+            {
+                //ugliest shit of ALL TIME. This is one ugly hack, must be implemented 
+                //within grive.
+                system(GRIVECMD);
+            }
 
-	    //We have to rescan for new directories, If unwatched dirs found, add watch.
-            syncer.rescan();
-            syncer.genEvents();
+            if(do_rescan)
+            {
+                //We have to rescan for new directories, If unwatched dirs found, add watch.
+                syncer.rescan();
+            }
         }
     }
     ret = EXIT_SUCCESS;

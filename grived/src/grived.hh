@@ -1,24 +1,26 @@
 #ifndef _GRIVED_HH
 #define _GRIVED_HH
 
-#include <sys/epoll.h>
+#include <boost/bimap.hpp>
+
+extern "C" {
+        #include <sys/epoll.h>
+}
 
 class Grived {
     public:
         Grived(string);
         bool rescan(void);
-        bool genEvents(void);
-        bool getEvents(void);
+
+        epoll_event * getEvents(void);
 
     private:
         int epollfd;
         string g_dir;
-        std::unordered_set<std::string> dirs;
-        std::vector< int > wds;
 
-        //should we typedef the type?
-        std::map< int, boost::shared_ptr<epoll_event> > event_map;
-        std::vector< epoll_event> events;
+        typedef boost::bimap<int, string> bm_t;
+        bm_t wddirmap;
+        epoll_event * events;
 }
 
 #endif
