@@ -58,6 +58,13 @@ Grived::Grived(string path) :
             //Exception or something....
 }
 
+Grived::~Grived() {
+    if(events)
+    {
+        delete events;
+    }
+}
+
 epoll_event * Grived::alloc_events(unsigned int sz)
 {
     if(events)
@@ -67,6 +74,10 @@ epoll_event * Grived::alloc_events(unsigned int sz)
     events = new epoll_event[sz](); 
 
     return events;
+}
+
+Grived::bm_t& Grived::getDirMap(void){
+    return wddirmap;
 }
 
 bool Grived::rescan(void)
@@ -98,7 +109,7 @@ bool Grived::rescan(void)
         {
             //new watch!
             new_dirs = true;
-            wd = inotify_add_watch( inotfyfd, dirstr.c_str(),
+            wd = inotify_add_watch( inotifyfd, dirstr.c_str(),
                     IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO );
             if(wd) 
             {
@@ -129,6 +140,29 @@ bool Grived::rescan(void)
     return new_dirs;
 }
 
+bool Grived::purge(int inotifyfd)
+{
+
+    //ugly hack to avoid iterator invalidation...
+    std::vector<int> wds;
+
+    //unwatch dirs....
+    BOOST_FOREACH( :bm_t::left_reference p, syncer.getDirMap().left )
+    {
+        if(!boost::filesystem::exists(p.second))
+        {
+                inotify_rm_watch(inotifyfd, p.first);
+                wds.push_back(p.first);
+        }
+    }
+
+    //This is just me being lazy.... should find a safe way of doing it 
+    //in the above loop. Shame on me..
+    while(wds.size())
+    {
+        wddirmap.left.erase(wds.pop_back());
+    }
+}
 
 int Main( int argc, char **argv )
 {
@@ -208,8 +242,8 @@ int Main( int argc, char **argv )
     close(STDERR_FILENO);
 
     /* daemon logic */
-    inotfyfd = inotify_init();
-    if ( inotfyfd < 0 ) 
+    inotifyfd = inotify_init();
+    if ( inotifyfd < 0 ) 
     {
         perror( "inotify_init" );
     }
@@ -307,34 +341,22 @@ int Main( int argc, char **argv )
             {
                 //We have to rescan for new directories, If unwatched dirs found, add watch.
                 syncer.rescan();
+                //remove other entries...
+                syncer.purge();
             }
         }
     }
     ret = EXIT_SUCCESS;
 
 cleanup:
-    while(!events.empty()) 
-    {
-        // boost::shared_ptr<epoll_event> aux;
-        // aux = events.back();
+    //clear watches....
+    BOOST_FOREACH( Grived::bm_t::left_reference p, syncer.getDirMap().left ){
+        inotify_rm_watch(inotifyfd, p.first);
+    }
+    
+    ~syncer();
 
-        events.pop_back();
-    }
-    //in theory these two could be wrapped into one loop
-    //because they should contain the same number of
-    //entries....
-    while(!dirs.empty()) 
-    {
-        dirs.pop();
-    }
-    while(!wds.empty())
-    {
-        int wd = wds.back();
-        wds.pop_back();
-        inotify_rm_watch(inotifyfd, wd);
-    }
-
-    close(inotfyfd);
+    close(inotifyfd);
 
     exit(ret);
 }
