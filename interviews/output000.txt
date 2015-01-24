@@ -1,0 +1,26 @@
+Classification 
+[
+Health Care
+  Biotech & Pharma
+    Biotech
+      Commercial Growth Biotech
+      Early Commercial Biotech
+      Mature Biotechnology
+    Generic Pharmaceuticals
+    Large Pharmaceuticals
+  Chemicals
+    Chemicals & Allied
+    Chemicals Distribution
+Industrials
+  Aerospace & Defense
+    Commercial Aircraft
+    Defense Primes
+  Waste&Envrnmt Srvc Equip&Fac
+    Pollution Control Equipment
+      Air Purification
+]
+findCompanies("Health Care", "CompanyName") -> [Amgen, CSL Ltd, Cubist, Gemvax & Kael, Merck, Mylan, Pfizer]
+findCompanies("Large Pharmaceuticals", "MarketCap") -> [Merck, Pfizer]
+findCompanies("Aerospace & Defense", "IndustryRevenue") -> [Lockheed Martin, Boeing]
+findCompanies("Early Commercial Biotech", "CompanyName") -> []
+findIndustries("Gemvax & Kael") -> [Air Purification, Chemicals & Allied]
