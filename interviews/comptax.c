@@ -10,25 +10,57 @@
 
 using namespace std;
 
+//Forward Declaration
+class Industry;
 
 class Company {
-    Company(string s, uint32_t cap, uint32_t rev) 
-        : name(s)
-        , market_cap(cap)
-        , industry_revenue(rev) {
-    }
+    public:
+        Company(string s, uint32_t cap, uint32_t rev, Industry * i = NULL) 
+            : name(s)
+            , industry(i);
+            , market_cap(cap)
+            , revenue(rev) {
+                //EMPTY.
+        }
+
+        void set_name(string s) {
+            name = s;
+        }
+        void set_industry(Industry * i) {
+            industry = i;
+        }
+        void set_market_cap(uint32_t cap) {
+            market_cap = cap;
+        }
+        void set_revenue(uint32_t rev) {
+            revenue = rev;
+        }
+        string get_name() {
+            return name;
+        }
+        Industry * get_industry(Industry * i) {
+            return industry;
+        }
+        uint32_t get_market_cap() {
+            return market_cap;
+        }
+        uint32_t get_revenue() {
+            return revenue;
+        }
 
     private:
         string name;
+        Industry * industry;
         uint32_t market_cap;
-        uint32_t industry_revenue;
+        uint32_t revenue;
 };
 
 class Industry {
     public:
         Industry(string s, bool l=false)
             : name(s) 
-            : leaf(l) {
+            , leaf(l) 
+            , parent(NULL){
                 //nothing here.
             }
 
@@ -39,14 +71,23 @@ class Industry {
                 return true;
             }
 
+            if(ind.get_parent() != this) {
+                //overwrite bad parent.
+                ind.set_parent(this);
+            }
+
             return subindustries.insert(make_pair(name, ind)).second;
         }
 
         bool add_company(Company c) {
             bool c_succ = false, rev_succ = false, cap_succ = false;
             string name(c.get_name());
-            //REFINE - what if company is already present?
 
+            if(c.get_industry() != this) {
+                //overwrite bad industry.
+                c.set_industry(this);
+            }
+            //REFINE - what if company is already present?
             c_succ = companies.insert(make_pair(name, c)).second;
             if(!c_succ) {
                 return false;
@@ -94,9 +135,23 @@ class Industry {
             return NULL;
         }
 
+        void set_name(string s) {
+            name = s;
+        }
+        void set_parent(Industry * industry) {
+            parent = industry;
+        }
+        string get_name() {
+            return name;
+        }
+        Industry * get_parent() {
+            return parent;
+        }
+
     private:
         bool leaf; //might not use
         string name;
+        Industry * parent;
         unordered_map<string, Industry> subindustries;
         map<string, Company> companies;
 
