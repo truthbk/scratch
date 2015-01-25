@@ -17,7 +17,7 @@ class Company {
     public:
         Company(string s, uint32_t cap, uint32_t rev, Industry * i = NULL) 
             : name(s)
-            , industry(i);
+            , industry(i)
             , market_cap(cap)
             , revenue(rev) {
                 //EMPTY.
@@ -38,7 +38,7 @@ class Company {
         string get_name() {
             return name;
         }
-        Industry * get_industry(Industry * i) {
+        Industry * get_industry() {
             return industry;
         }
         uint32_t get_market_cap() {
@@ -93,15 +93,15 @@ class Industry {
                 return false;
             }
 
-            rev_succ = companies.insert(make_pair(c.get_revenue(), &companies[s])).second;
+            rev_succ = comps_by_revenue.insert(make_pair(c.get_revenue(), &companies[name])).second;
             if(!rev_succ) {
                 companies.erase(name);
                 return false;
             }
 
-            cap_succ = companies.insert(make_pair(c.get_cap(), &companies[s])).second;
+            cap_succ = comps_by_cap.insert(make_pair(c.get_market_cap(), &companies[name])).second;
             if(!cap_succ) {
-                multimap<uint32_t, Company *>::iterator it = comps_by_revenue.find(c.get_cap());
+                multimap<uint32_t, Company *>::iterator it = comps_by_revenue.find(c.get_revenue());
                 while(it->second != &companies[name]) {
                     it++;
                 }
@@ -116,17 +116,17 @@ class Industry {
         Industry * search_industry(string s) {
             Industry * ind = NULL;
             //BFS
-            unordered_map<string, Industry>::const_iterator cit =
+            unordered_map<string, Industry>::iterator it =
                 subindustries.find(s);
 
-            if(cit != subindustries.end()) { //HIT
-                return &(cit->second);
+            if(it != subindustries.end()) { //HIT
+                return &(it->second);
             }
 
             //DFS - shouldn't make much of a difference vs BFS
-            cit = subindustries.begin();
-            for (; cit != subindustries.end() ; cit++) {
-                ind = cit->second.search_subindustry(s);
+            it = subindustries.begin();
+            for (; it != subindustries.end() ; it++) {
+                ind = it->second.search_industry(s);
                 if(ind) {
                     return ind;
                 }
@@ -151,9 +151,9 @@ class Industry {
             ss << get_name();
             ss << endl;
 
-            cit = subindustries.begin();
-            for (; cit != subindustries.end() ; cit++) {
-                ss << cit->second.print();
+            it = subindustries.begin();
+            for (; it != subindustries.end() ; it++) {
+                ss << it->second.print();
             }
 
             return ss.str();
@@ -181,8 +181,8 @@ class Industry {
         map<string, Company> companies;
 
         // if Boost available multi_index_container. Sticking to STL.
-        multi_map<uint32_t, Company *>  comps_by_cap; 
-        multi_map<uint32_t, Company *> comps_by_revenue;
+        multimap<uint32_t, Company *>  comps_by_cap; 
+        multimap<uint32_t, Company *> comps_by_revenue;
 };
 
 class CompTaxonomy {
@@ -192,17 +192,17 @@ class CompTaxonomy {
         Industry * search_industry(string s) {
             Industry * ind = NULL;
             //BFS
-            unordered_map<string, Industry>::const_iterator cit =
+            unordered_map<string, Industry>::iterator it =
                 industries.find(s);
 
-            if(cit != industries.end()) { //HIT
-                return &(cit->second);
+            if(it != industries.end()) { //HIT
+                return &(it->second);
             }
 
             //DFS - shouldn't make much of a difference vs BFS
-            cit = industries.begin();
-            for (; cit != industries.end() ; cit++) {
-                ind = cit->second.search_industry(s);
+            it = industries.begin();
+            for (; it != industries.end() ; it++) {
+                ind = it->second.search_industry(s);
                 if(ind) {
                     return ind;
                 }
@@ -302,9 +302,9 @@ class CompTaxonomy {
         string print_industries() {
             stringstream ss;
 
-            cit = industries.begin();
-            for (; cit != industries.end() ; cit++) {
-                ss << cit->second.print();
+            it = industries.begin();
+            for (; it != industries.end() ; it++) {
+                ss << it->second.print();
                 ss << endl;
             }
 
