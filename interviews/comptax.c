@@ -143,6 +143,7 @@ class Industry {
             Industry * p = parent;
             while(p) {
                 depth++;
+                p = p->parent;
             }
             return depth;
         }
@@ -330,7 +331,7 @@ class CompTaxonomy {
                     if(index == 0) {
                         stok = stok.substr(1); //skip token
                     } else {
-                        v.push_back(stok.substr(0, index-1));
+                        v.push_back(stok.substr(0, index));
                         stok = stok.substr(index);
 
                     }
@@ -353,6 +354,9 @@ int main(int argc, char **argv) {
     }
     CompTaxonomy myindustries;
     myindustries.parse_input(argv[1]);
+
+    //print
+    cout << myindustries.print_industries();
 
     return 0;
 }
