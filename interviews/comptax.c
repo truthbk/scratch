@@ -65,6 +65,12 @@ class Industry {
                 //nothing here.
             }
 
+        enum criteria {
+            COMPANY_NAME,
+            REVENUE,
+            MARKET_CAP
+        };
+
         bool add_subindustry(Industry ind) {
             string name(ind.get_name());
             if(subindustries.find(name) != subindustries.end()) {
@@ -138,6 +144,35 @@ class Industry {
 
             return NULL;
         }
+
+        vector<string> get_companies(criteria crit) {
+            vector<string> v;
+            switch(crit) {
+                case REVENUE:
+                    break;
+                case MARKET_CAP:
+                    break;
+                case COMPANY_NAME:
+                default:
+                    map<string, Company>::iterator it(companies.begin());
+                    for( ; it != companies.end() ; it++) {
+                        v.push_back(it->second.get_name());
+                    }
+
+                    unordered_map<string, Industry>::iterator subit(subindustries.begin());
+                    for( ; subit != subindustries.end() ; subit++) {
+                        vector<string> aux = subit->second.get_companies(crit);
+                        v.insert(v.end(),aux.begin(),aux.end());
+                        //sort v - only partially sorted.
+                    }
+
+                    break;
+            }
+
+            return v;
+
+        }
+
         uint32_t my_depth(void) {
             int depth = 0;
             Industry * p = parent;
@@ -263,6 +298,7 @@ class CompTaxonomy {
                 return false;
             }
 
+            conv.clear();
             conv << v[4];
             if(!(conv >> rev)) {
                 return false;
@@ -316,6 +352,19 @@ class CompTaxonomy {
             return ss.str();
         }
 
+        void print_companies(Industry::criteria crit, string s) {
+            Industry * ind(search_industry(s));
+            if(!ind) {
+                return;
+            }
+            vector<string> v(ind->get_companies(crit));
+
+            vector<string>::iterator sit(v.begin());
+            for( ; sit != v.end() ; sit++) {
+                cout << *sit << "," ;
+            }
+        }
+
     private:
         vector<string> blast(string s, char tok) {
             vector<string> v;
@@ -357,6 +406,7 @@ int main(int argc, char **argv) {
 
     //print
     cout << myindustries.print_industries();
+    myindustries.print_companies(Industry::criteria::COMPANY_NAME,"Health Care");
 
     return 0;
 }
