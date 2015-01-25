@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <map>
 #include <multimap>
+#include <vector>
 
 using namespace std;
 
@@ -133,6 +134,31 @@ class Industry {
             }
 
             return NULL;
+        }
+        uint32_t my_depth(void) {
+            int depth = 0;
+            Industry * p = parent;
+            while(p) {
+                depth++;
+            }
+            return depth;
+        }
+        string print() {
+            stringstream ss;
+            uint32_t depth = my_depth();
+            for(int i=0 ; i<depth ; i++) {
+                ss << "  ";
+            }
+            ss << get_name();
+            ss << endl;
+
+            cit = subindustries.begin();
+            for (; cit != subindustries.end() ; cit++) {
+                ss << cit->second.print();
+            }
+
+            return ss.str();
+
         }
 
         void set_name(string s) {
@@ -273,6 +299,19 @@ class CompTaxonomy {
 
             return true;
         }
+
+        string print_industries() {
+            stringstream ss;
+
+            cit = industries.begin();
+            for (; cit != industries.end() ; cit++) {
+                ss << cit->second.print();
+                ss << endl;
+            }
+
+            return ss.str();
+        }
+
     private:
         vector<string> blast(string s, char tok) {
             vector<string> v;
