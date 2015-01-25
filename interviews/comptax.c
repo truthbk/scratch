@@ -5,6 +5,7 @@
 #include <string>
 
 #include <utility>
+#include <algorithm>
 #include <unordered_map>
 #include <map>
 #include <vector>
@@ -47,6 +48,16 @@ class Company {
         }
         uint32_t get_revenue() {
             return revenue;
+        }
+
+        static bool name_cmp(Company * a, Company * b) {
+            return (a->get_name() < b->get_name());
+        }
+        static bool revenue_cmp(Company * a, Company * b) {
+            return (a->get_revenue() < b->get_revenue());
+        }
+        static bool cap_cmp(Company * a, Company * b) {
+            return (a->get_market_cap() < b->get_market_cap());
         }
 
     private:
@@ -125,8 +136,8 @@ class Industry {
 
         Industry * search_industry(string s) {
             Industry * ind = NULL;
-            //BFS
             unordered_map<string, Industry *>::iterator it =
+
                 subindustries.find(s);
 
             if(it != subindustries.end()) { //HIT
@@ -145,30 +156,74 @@ class Industry {
             return NULL;
         }
 
-        vector<string> get_companies(criteria crit) {
-            vector<string> v;
+        //Large holding companies might be in different industries
+        //therefore return a vector with all the hits.
+        vector<Company *> search_company(string c) {
+            vector<Company *> v;
+            vector<Company *> v_aux;
+            map<string, Company>::iterator it = companies.find(c);
+
+            if(it != companies.end()) { //HIT
+                v.push_back( &(it->second));
+            }
+
+            //DFS - shouldn't make much of a difference vs BFS
+            unordered_map<string, Industry *>::iterator cit(subindustries.begin());
+            for (; cit != subindustries.end() ; cit++) {
+                v_aux = cit->second->search_company(c);
+                v.insert(v.begin(), v_aux.begin(), v_aux.end());
+            }
+
+            return v;
+        }
+
+        vector<Company *> get_companies(criteria crit) {
+            vector<Company *> v;
+            unordered_map<string, Industry *>::iterator subit(subindustries.begin());
+            multimap<uint32_t, Company *>::iterator rev_it(comps_by_revenue.begin());
+            multimap<uint32_t, Company *>::iterator cap_it(comps_by_cap.begin()); 
+            map<string, Company>::iterator it(companies.begin());
+
             switch(crit) {
                 case REVENUE:
+                    for( ; rev_it != comps_by_revenue.end() ; rev_it++) {
+                        v.push_back(rev_it->second);
+                    }
+
+                    for( ; subit != subindustries.end() ; subit++) {
+                        vector<Company *> aux = subit->second->get_companies(crit);
+                        v.insert(v.end(),aux.begin(),aux.end());
+                        //sort v - only partially sorted. Insertion sort would be best.
+                        sort(v.begin(), v.end(), Company::revenue_cmp);
+                    }
                     break;
                 case MARKET_CAP:
+                    for( ; cap_it != comps_by_cap.end() ; cap_it++) {
+                        v.push_back(cap_it->second);
+                    }
+
+                    for( ; subit != subindustries.end() ; subit++) {
+                        vector<Company *> aux = subit->second->get_companies(crit);
+                        v.insert(v.end(),aux.begin(),aux.end());
+                        //sort v - only partially sorted. Insertion sort would be best.
+                        sort(v.begin(), v.end(), Company::cap_cmp);
+                    }
                     break;
                 case COMPANY_NAME:
                 default:
-                    map<string, Company>::iterator it(companies.begin());
                     for( ; it != companies.end() ; it++) {
-                        v.push_back(it->second.get_name());
+                        v.push_back(&(it->second));
                     }
 
-                    unordered_map<string, Industry *>::iterator subit(subindustries.begin());
                     for( ; subit != subindustries.end() ; subit++) {
-                        vector<string> aux = subit->second->get_companies(crit);
-                        v.insert(v.end(),aux.begin(),aux.end());
-                        //sort v - only partially sorted.
-                    }
+                        vector<Company *> aux = subit->second->get_companies(crit);
 
+                        v.insert(v.end(),aux.begin(),aux.end());
+                        //sort v - only partially sorted. Insertion sort would be best.
+                        sort(v.begin(), v.end(), Company::name_cmp);
+                    }
                     break;
             }
-
             return v;
 
         }
@@ -181,6 +236,18 @@ class Industry {
                 p = p->parent;
             }
             return depth;
+        }
+        vector<Industry *> get_lineage() {
+            vector<Industry *> v;
+
+            v.push_back(this);
+            Industry * p = parent;
+            while(p) {
+                v.push_back(p);
+                p = p->parent;
+            }
+
+            return v;
         }
         string print() {
             stringstream ss;
@@ -231,7 +298,7 @@ class CompTaxonomy {
 
         Industry * search_industry(string s) {
             Industry * ind = NULL;
-            //BFS
+
             unordered_map<string, Industry *>::iterator it =
                 industries.find(s);
 
@@ -249,6 +316,16 @@ class CompTaxonomy {
             }
 
             return NULL;
+        }
+        vector<Company *> search_company(string c) {
+            vector<Company *> v;
+            vector<Company *> v_aux;
+            unordered_map<string, Industry *>::iterator it(industries.begin());
+            for (; it != industries.end() ; it++) {
+                v_aux = it->second->search_company(c);
+                v.insert(v.begin(), v_aux.begin(), v_aux.end());
+            }
+            return v;
         }
 
         bool parse_industry(vector<string> v) {
@@ -357,16 +434,46 @@ class CompTaxonomy {
             return ss.str();
         }
 
+        vector<string> find_industries(string c, bool last=false) {
+            stringstream ss;
+            vector<string> res;
+            vector<Company *> v(search_company(c));
+
+            vector<Company *>::iterator it(v.begin());
+            for( ; it != v.end() ; it++) {
+                Company * c_ptr(*it);
+                vector<Industry *> lineage(c_ptr->get_industry()->get_lineage());
+                vector<Industry *>::iterator iit(lineage.begin());
+                for ( ; iit != lineage.end() ; ) {
+                    ss << (*iit)->get_name();
+                    if(last) {
+                        iit = lineage.end();
+                    } else {
+                        if(++iit != lineage.end()) {
+                            ss << ", ";
+                        }
+                    }
+                }
+                res.push_back(ss.str());
+                ss.clear();
+                ss.str("");
+            }
+            return res;
+        }
+
         void print_companies(Industry::criteria crit, string s) {
             Industry * ind(search_industry(s));
             if(!ind) {
                 return;
             }
-            vector<string> v(ind->get_companies(crit));
+            vector<Company *> v(ind->get_companies(crit));
 
-            vector<string>::iterator sit(v.begin());
-            for( ; sit != v.end() ; sit++) {
-                cout << *sit << "," ;
+            vector<Company *>::iterator sit(v.begin());
+            for( ; sit != v.end() ; ) {
+                cout << (*sit)->get_name();
+                if(++sit != v.end()) {
+                    cout << ", ";
+                }
             }
         }
 
@@ -411,8 +518,32 @@ int main(int argc, char **argv) {
     myindustries.parse_input(argv[1]);
 
     //print
+    cout << "Classification" << endl << "[" << endl;
     cout << myindustries.print_industries();
+    cout << "]" << endl;
+    cout << "findCompanies(\"Health Care\", \"CompanyName\") -> [";
     myindustries.print_companies(Industry::criteria::COMPANY_NAME,"Health Care");
+    cout << "]" << endl;
+    cout << "findCompanies(\"Large Pharmaceuticals\", \"MarketCap\") -> [";
+    myindustries.print_companies(Industry::criteria::MARKET_CAP,"Large Pharmaceuticals");
+    cout << "]" << endl;
+    cout << "findCompanies(\"Aerospace & Defense\", \"IndustryRevenue\") -> [";
+    myindustries.print_companies(Industry::criteria::REVENUE,"Aerospace & Defense");
+    cout << "]" << endl;
+    cout << "findCompanies(\"Early Commercial Biotech\", \"CompanyName\") -> [";
+    myindustries.print_companies(Industry::criteria::COMPANY_NAME,"Early Commercial Biotech");
+    cout << "]" << endl;
+    vector<string> v(myindustries.find_industries("Gemvax & Kael", true));
+    vector<string>::iterator it(v.begin());
+    cout << "findIndustries(\"Gemvax & Kael\") -> [";
+    for ( ; it != v.end() ; ) {
+        cout << *it;
+        if(++it != v.end()) {
+            cout << ", ";
+        }
+    }
+    cout << "]" << endl;
+
 
     return 0;
 }
