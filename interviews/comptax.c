@@ -136,7 +136,7 @@ class Industry {
 
         Industry * search_industry(string s) {
             Industry * ind = NULL;
-            unordered_map<string, Industry *>::iterator it =
+            map<string, Industry *>::iterator it =
 
                 subindustries.find(s);
 
@@ -168,7 +168,7 @@ class Industry {
             }
 
             //DFS - shouldn't make much of a difference vs BFS
-            unordered_map<string, Industry *>::iterator cit(subindustries.begin());
+            map<string, Industry *>::iterator cit(subindustries.begin());
             for (; cit != subindustries.end() ; cit++) {
                 v_aux = cit->second->search_company(c);
                 v.insert(v.begin(), v_aux.begin(), v_aux.end());
@@ -179,7 +179,7 @@ class Industry {
 
         vector<Company *> get_companies(criteria crit) {
             vector<Company *> v;
-            unordered_map<string, Industry *>::iterator subit(subindustries.begin());
+            map<string, Industry *>::iterator subit(subindustries.begin());
             multimap<uint32_t, Company *>::iterator rev_it(comps_by_revenue.begin());
             multimap<uint32_t, Company *>::iterator cap_it(comps_by_cap.begin()); 
             map<string, Company>::iterator it(companies.begin());
@@ -258,7 +258,7 @@ class Industry {
             ss << get_name();
             ss << endl;
 
-            unordered_map<string, Industry *>::iterator it(subindustries.begin());
+            map<string, Industry *>::iterator it(subindustries.begin());
             for (; it != subindustries.end() ; it++) {
                 ss << it->second->print();
             }
@@ -284,7 +284,7 @@ class Industry {
         bool leaf; //might not use
         string name;
         Industry * parent;
-        unordered_map<string, Industry *> subindustries;
+        map<string, Industry *> subindustries;
         map<string, Company> companies;
 
         // if Boost available multi_index_container. Sticking to STL.
@@ -299,13 +299,13 @@ class CompTaxonomy {
         Industry * search_industry(string s) {
             Industry * ind = NULL;
 
-            unordered_map<string, Industry *>::iterator it =
-                industries.find(s);
+            unordered_map<string, Industry>::iterator it =
+                industry_store.find(s);
 
-            if(it != industries.end()) { //HIT
-                return (it->second);
+            if(it != industry_store.end()) { //HIT
+                return &(it->second);
             }
-
+#if 0
             //DFS - shouldn't make much of a difference vs BFS
             it = industries.begin();
             for (; it != industries.end() ; it++) {
@@ -314,13 +314,14 @@ class CompTaxonomy {
                     return ind;
                 }
             }
+#endif
 
             return NULL;
         }
         vector<Company *> search_company(string c) {
             vector<Company *> v;
             vector<Company *> v_aux;
-            unordered_map<string, Industry *>::iterator it(industries.begin());
+            map<string, Industry *>::iterator it(industries.begin());
             for (; it != industries.end() ; it++) {
                 v_aux = it->second->search_company(c);
                 v.insert(v.begin(), v_aux.begin(), v_aux.end());
@@ -425,7 +426,7 @@ class CompTaxonomy {
         string print_industries() {
             stringstream ss;
 
-            unordered_map<string, Industry *>::iterator it(industries.begin());
+            map<string, Industry *>::iterator it(industries.begin());
             for (; it != industries.end() ; it++) {
                 ss << it->second->print();
                 ss << endl;
@@ -501,7 +502,7 @@ class CompTaxonomy {
             return v;
         }
 
-        unordered_map<string, Industry *> industries;
+        map<string, Industry *> industries;
         unordered_map<string, Industry> industry_store;
         const char token = '|';
         const string comment_pre = "//";
