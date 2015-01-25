@@ -71,16 +71,16 @@ class Industry {
             MARKET_CAP
         };
 
-        bool add_subindustry(Industry ind) {
-            string name(ind.get_name());
+        bool add_subindustry(Industry * ind) {
+            string name(ind->get_name());
             if(subindustries.find(name) != subindustries.end()) {
                 //industry exists
                 return true;
             }
 
-            if(ind.get_parent() != this) {
+            if(ind->get_parent() != this) {
                 //overwrite bad parent.
-                ind.set_parent(this);
+                ind->set_parent(this);
             }
 
             return subindustries.insert(make_pair(name, ind)).second;
@@ -126,17 +126,17 @@ class Industry {
         Industry * search_industry(string s) {
             Industry * ind = NULL;
             //BFS
-            unordered_map<string, Industry>::iterator it =
+            unordered_map<string, Industry *>::iterator it =
                 subindustries.find(s);
 
             if(it != subindustries.end()) { //HIT
-                return &(it->second);
+                return (it->second);
             }
 
             //DFS - shouldn't make much of a difference vs BFS
             it = subindustries.begin();
             for (; it != subindustries.end() ; it++) {
-                ind = it->second.search_industry(s);
+                ind = it->second->search_industry(s);
                 if(ind) {
                     return ind;
                 }
@@ -159,9 +159,9 @@ class Industry {
                         v.push_back(it->second.get_name());
                     }
 
-                    unordered_map<string, Industry>::iterator subit(subindustries.begin());
+                    unordered_map<string, Industry *>::iterator subit(subindustries.begin());
                     for( ; subit != subindustries.end() ; subit++) {
-                        vector<string> aux = subit->second.get_companies(crit);
+                        vector<string> aux = subit->second->get_companies(crit);
                         v.insert(v.end(),aux.begin(),aux.end());
                         //sort v - only partially sorted.
                     }
@@ -191,9 +191,9 @@ class Industry {
             ss << get_name();
             ss << endl;
 
-            unordered_map<string, Industry>::iterator it(subindustries.begin());
+            unordered_map<string, Industry *>::iterator it(subindustries.begin());
             for (; it != subindustries.end() ; it++) {
-                ss << it->second.print();
+                ss << it->second->print();
             }
 
             return ss.str();
@@ -217,7 +217,7 @@ class Industry {
         bool leaf; //might not use
         string name;
         Industry * parent;
-        unordered_map<string, Industry> subindustries;
+        unordered_map<string, Industry *> subindustries;
         map<string, Company> companies;
 
         // if Boost available multi_index_container. Sticking to STL.
@@ -232,17 +232,17 @@ class CompTaxonomy {
         Industry * search_industry(string s) {
             Industry * ind = NULL;
             //BFS
-            unordered_map<string, Industry>::iterator it =
+            unordered_map<string, Industry *>::iterator it =
                 industries.find(s);
 
             if(it != industries.end()) { //HIT
-                return &(it->second);
+                return (it->second);
             }
 
             //DFS - shouldn't make much of a difference vs BFS
             it = industries.begin();
             for (; it != industries.end() ; it++) {
-                ind = it->second.search_industry(s);
+                ind = it->second->search_industry(s);
                 if(ind) {
                     return ind;
                 }
@@ -266,15 +266,20 @@ class CompTaxonomy {
             }
 
             Industry i(name);
+            pair<unordered_map<string, Industry>::iterator, bool> p(industry_store.insert(make_pair(name, i)));
+            if(!(p.second)) {
+                return false;
+            }
+            Industry * iptr = &(p.first->second);
             if(contained_in.empty()) {
-                return industries.insert(make_pair(name, i)).second;
+                return industries.insert(make_pair(name, iptr)).second;
             } else {
                 Industry *parent = search_industry(contained_in);
                 if(!parent) {
                     return false;
                 }
 
-                status = parent->add_subindustry(i);
+                status = parent->add_subindustry(iptr);
             }
 
             return status;
@@ -343,9 +348,9 @@ class CompTaxonomy {
         string print_industries() {
             stringstream ss;
 
-            unordered_map<string, Industry>::iterator it(industries.begin());
+            unordered_map<string, Industry *>::iterator it(industries.begin());
             for (; it != industries.end() ; it++) {
-                ss << it->second.print();
+                ss << it->second->print();
                 ss << endl;
             }
 
@@ -389,7 +394,8 @@ class CompTaxonomy {
             return v;
         }
 
-        unordered_map<string, Industry> industries;
+        unordered_map<string, Industry *> industries;
+        unordered_map<string, Industry> industry_store;
         const char token = '|';
         const string comment_pre = "//";
         const string industry_pre = "IndustryName";
