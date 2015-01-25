@@ -326,13 +326,14 @@ class CompTaxonomy {
                 if(index == string::npos) {
                     v.push_back(stok);
                     stok = "";
-                }
-                if(index == 0) {
-                    stok = stok.substr(1); //skip token
                 } else {
-                    v.push_back(stok.substr(0, index-1));
-                    stok = stok.substr(index);
+                    if(index == 0) {
+                        stok = stok.substr(1); //skip token
+                    } else {
+                        v.push_back(stok.substr(0, index-1));
+                        stok = stok.substr(index);
 
+                    }
                 }
             }
             return v;
@@ -345,7 +346,13 @@ class CompTaxonomy {
         const string company_pre  = "Company";
 };
 
-int main() {
+int main(int argc, char **argv) {
     /* Enter your code here. Read input from STDIN. Print output to STDOUT */
+    if(argc < 2) {
+        return -1;
+    }
+    CompTaxonomy myindustries;
+    myindustries.parse_input(argv[1]);
+
     return 0;
 }
