@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #include <utility>
@@ -93,13 +94,13 @@ class Industry {
                 return false;
             }
 
-            rev_succ = comps_by_revenue.insert(make_pair(c.get_revenue(), &companies[name])).second;
+            rev_succ = comps_by_revenue.insert(make_pair(c.get_revenue(), &companies[name]))->second;
             if(!rev_succ) {
                 companies.erase(name);
                 return false;
             }
 
-            cap_succ = comps_by_cap.insert(make_pair(c.get_market_cap(), &companies[name])).second;
+            cap_succ = comps_by_cap.insert(make_pair(c.get_market_cap(), &companies[name]))->second;
             if(!cap_succ) {
                 multimap<uint32_t, Company *>::iterator it = comps_by_revenue.find(c.get_revenue());
                 while(it->second != &companies[name]) {
@@ -151,7 +152,7 @@ class Industry {
             ss << get_name();
             ss << endl;
 
-            it = subindustries.begin();
+            unordered_map<string, Industry>::iterator it(subindustries.begin());
             for (; it != subindustries.end() ; it++) {
                 ss << it->second.print();
             }
@@ -268,7 +269,7 @@ class CompTaxonomy {
                 return false;
             }
 
-            Company c(name, cap, rev) 
+            Company c(name, cap, rev);
             status = i->add_company(c);
 
             return status;
@@ -283,10 +284,10 @@ class CompTaxonomy {
                 while( getline(ifile, line)) {
                     split = blast(line, token);
 
-                    if(v[0] == industry_pre) {
-                        parse_industry(v);
-                    } else if(v[0] == company_pre) {
-                        parse_company(v);
+                    if(split[0] == industry_pre) {
+                        parse_industry(split);
+                    } else if(split[0] == company_pre) {
+                        parse_company(split);
                     } else {
                         //nothing(comment?).
                     }
@@ -302,7 +303,7 @@ class CompTaxonomy {
         string print_industries() {
             stringstream ss;
 
-            it = industries.begin();
+            unordered_map<string, Industry>::iterator it(industries.begin());
             for (; it != industries.end() ; it++) {
                 ss << it->second.print();
                 ss << endl;
