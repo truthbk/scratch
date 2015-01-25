@@ -89,21 +89,24 @@ class Industry {
                 c.set_industry(this);
             }
             //REFINE - what if company is already present?
-            c_succ = companies.insert(make_pair(name, c)).second;
+            typedef pair<map<string, Company>::iterator, bool> status_pair;
+            status_pair res = companies.insert(make_pair(name, c));
+            c_succ = res.second;
             if(!c_succ) {
                 return false;
             }
 
-            rev_succ = comps_by_revenue.insert(make_pair(c.get_revenue(), &companies[name]))->second;
+            Company& c_ref(res.first->second);
+            rev_succ = comps_by_revenue.insert(make_pair(c.get_revenue(), &c_ref))->second;
             if(!rev_succ) {
                 companies.erase(name);
                 return false;
             }
 
-            cap_succ = comps_by_cap.insert(make_pair(c.get_market_cap(), &companies[name]))->second;
+            cap_succ = comps_by_cap.insert(make_pair(c.get_market_cap(), &c_ref))->second;
             if(!cap_succ) {
-                multimap<uint32_t, Company *>::iterator it = comps_by_revenue.find(c.get_revenue());
-                while(it->second != &companies[name]) {
+                multimap<uint32_t, Company *>::iterator it(comps_by_revenue.find(c.get_revenue()));
+                while(it->second != &c_ref) {
                     it++;
                 }
                 if (it != comps_by_revenue.end()) {
@@ -182,7 +185,7 @@ class Industry {
         map<string, Company> companies;
 
         // if Boost available multi_index_container. Sticking to STL.
-        multimap<uint32_t, Company *>  comps_by_cap; 
+        multimap<uint32_t, Company *> comps_by_cap; 
         multimap<uint32_t, Company *> comps_by_revenue;
 };
 
@@ -341,3 +344,8 @@ class CompTaxonomy {
         const string industry_pre = "IndustryName";
         const string company_pre  = "Company";
 };
+
+int main() {
+    /* Enter your code here. Read input from STDIN. Print output to STDOUT */
+    return 0;
+}
