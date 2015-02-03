@@ -398,7 +398,7 @@ class CompTaxonomy {
             return status;
         }
 
-        bool parse_input(string f) {
+        bool parse_finput(string f) {
             string line;
             ifstream ifile(f);
             vector<string> split;
@@ -421,6 +421,23 @@ class CompTaxonomy {
             }
 
             return true;
+        }
+        void parse_input() {
+            string line;                       
+            vector<string> split;
+            while( getline(cin, line)) {                
+                split = blast(line, token);
+
+                if(split[0] == industry_pre) {
+                    parse_industry(split);
+                } else if(split[0] == company_pre) {
+                    parse_company(split);
+                } else {
+                    //nothing(comment?).
+                }
+            }
+            
+            return;
         }
 
         string print_industries() {
@@ -511,12 +528,10 @@ class CompTaxonomy {
 };
 
 int main(int argc, char **argv) {
-    /* Enter your code here. Read input from STDIN. Print output to STDOUT */
-    if(argc < 2) {
-        return -1;
-    }
+/* Enter your code here. Read input from STDIN. Print output to STDOUT */
     CompTaxonomy myindustries;
-    myindustries.parse_input(argv[1]);
+    
+    myindustries.parse_input();   
 
     //print
     cout << "Classification" << endl << "[" << endl;
