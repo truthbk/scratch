@@ -429,7 +429,7 @@ class CompTaxonomy {
             map<string, Industry *>::iterator it(industries.begin());
             for (; it != industries.end() ; it++) {
                 ss << it->second->print();
-                ss << endl;
+                //ss << endl;
             }
 
             return ss.str();
