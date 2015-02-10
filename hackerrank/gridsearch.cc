@@ -32,11 +32,11 @@ class MyArray {
             for(int i=0 ; i<x_sz ; i++) {
                 for(int j=0 ; j<y_sz ; j++) {
                     char digit;
-                    cin >> digit;                    
+                    cin >> digit;
                     arr[i][j] = static_cast<int>(digit-'0');   
                     pair<int,int> coord(i,j);
                     coordmap.insert(pair<int, pair<int,int> >(arr[i][j], coord));
-                }                                
+                }
             }
         }
         bool has_pattern(int **pat,int x, int y) {
@@ -45,15 +45,14 @@ class MyArray {
             candidates = coordmap.equal_range(pat[0][0]);
             bool match = false;
             for (multimap<int,pair<int,int> >::iterator it=candidates.first; 
-                 it!=candidates.second && !match; ++it) {                
+                 it!=candidates.second && !match; ++it) {
                 int s_x = it->second.first;
-                int s_y = it->second.second;                
-                
-                bool bounds_x = ((s_x + x )<x_sz);
-                bool bounds_y = ((s_y + y )<y_sz);                                
-                
-                if(bounds_x && bounds_y) {                    
-                    bool mismatch = false;        
+                int s_y = it->second.second;
+
+                bool bounds_x = ((s_x + x )<=x_sz);
+                bool bounds_y = ((s_y + y )<=y_sz);
+                if(bounds_x && bounds_y) {
+                    bool mismatch = false;
                     bool worthit = (arr[s_x][s_y] == pat[0][0]);
                     worthit = worthit && (arr[s_x][s_y] == pat[0][0]);
                     worthit = worthit && (arr[s_x][s_y+y-1] == pat[0][y-1]);
@@ -62,18 +61,18 @@ class MyArray {
                     if(!worthit) {
                         mismatch = true;
                     } else {
+                        //cout << "Exploring: " << s_x << ", " << s_y << endl;
                         for( int i=0; i<x && !mismatch ; i++) {
-                            for( int j=0; j<y && !mismatch ; j++) {                            
-                                if(arr[s_x+i][s_y+j] != pat[i][j]) {                                
-                                    mismatch = true;                                
-                                }                            
-                            }                    
-                        }                    
+                            for( int j=0; j<y && !mismatch ; j++) {
+                                if(arr[s_x+i][s_y+j] != pat[i][j]) {
+                                    mismatch = true;
+                                }
+                            }
+                        }
                     }
-                    match = mismatch ? false : true ;                    
+                    match = mismatch ? false : true ;
                 }
-                
-            }            
+            }
             return match;
         }
 };
