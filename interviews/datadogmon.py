@@ -3,6 +3,7 @@
 import time
 import urlparse
 import sys
+import threading
 
 try:
     import scapy.all as scapy
@@ -23,7 +24,11 @@ class Alert(object):
         self.threshold = threshold
         self.duration = duration
         self.triggered = False
+        self.ack = False
         self.ts = None
+
+    def trigger(self):
+        self.ack = True
 
     def trigger(self):
         self.triggered = True
@@ -32,6 +37,7 @@ class Alert(object):
     def reset(self):
         self.triggered = False
         self.ts = None
+        self.ack = False
 
 
 class Counter(object):
@@ -63,23 +69,25 @@ class Counter(object):
         self.counts[self.last_ts%self.size] = self.counts[self.last_ts%self.size] + 1
         self.alltime = self.alltime + 1 # this will overflow sooner or later.
 
-    def sum(self, start=0, end=self.size-1):
+    def csum(self, start=0, end=None):
         res = 0
-        for i in xrange(start, end):
+        if end is None:
+            end = self.size
+        for i in xrange(start, end+1):
             res = res + self.counts[i]
 
         return res
 
-    def sum(self, lapse):
+    def csum_lapse(self, lapse):
         start_idx = (self.last_ts - lapse) % self.size
-        end_idx = self.last_ts
+        end_idx = self.last_ts % self.size
 
         res = 0
         if end_idx < start_idx:
-            res = sum(start_idx, self.size-1)
-            res = res + sum(0, end_idx)
+            res = self.csum(start_idx, self.size - 1)
+            res = res + self.csum(0, end_idx)
         else:
-            res = sum(start_idx, end_idx)
+            res = self.csum(start_idx, end_idx)
 
         return res
 
@@ -87,72 +95,110 @@ class Counter(object):
         self.alerts.append(alert)
 
     def process_alerts(self):
+        active = []
         for alert in self.alerts:
             if alert.triggered:
                 if self.last_ts >= alert.ts + alert.duration:
-                    avg = sum(alert.duration) / alert.duration
+                    avg = self.csum_lapse(alert.duration) / alert.duration
                     if avg < alert.threshold:
                         alert.reset()
+                        print 'Traffic restored to normalcy - hits %d, reset at: %d' \
+                            % (self.csum_lapse(lapse), self.last_ts)
             else:
-                avg = sum(alert.duration) / alert.duration
+                avg = self.csum_lapse(alert.duration) / alert.duration
                 if avg >= alert.threshold:
                     alert.trigger()
-                        alert.reset()
+                    print 'High traffic generated an alert - hits %d, triggered at: %d' \
+                          % (self.csum_lapse(lapse), self.last_ts)
+
+            if alert.triggered:
+                active.append(alert)
+
+        return active
 
 
 class DatadogMon(object):
 
-    def __init__(self):
+    def __init__(self, threshold=20):
         self.sites = {}
         self.leading = None
         self.leadcnt = 0
+        self.threshold = threshold
+        self.total = Counter(MON_TIME)
+        self.total.add_alert(Alert(threshold, 120))
 
+        #Global interpreter lock would do?
+        self.lock = threading.Lock()
+
+    #call holding lock.
     def count_hits(self, host):
         cnt = 0
+
         for site in self.sites[host]:
             cnt = cnt + self.sites[host][site].alltime
 
         return cnt
 
     def explore_leading(self):
-        if self.leading is None:
-            return
+        self.lock.acquire()
+        try:
+            if self.leading is not None:
 
-        for site in self.sites[self.leading]:
-            print '%s : %d hits' % (self, self.sites[leading][site].alltime)
+                for site in self.sites[self.leading]:
+                    print '%s / %s : %d hits' \
+                          % (self.leading, site, self.sites[self.leading][site].alltime)
+        finally:
+            self.lock.release()
 
     def monitor_site(self, host, path):
         url_subsite = path.split('/')
+        url_subsite = filter(None, url_subsite)
+        if url_subsite[0] == 'http:' or url_subsite[0] == 'https:':
+            url_subsite = url_subsite[1:]
 
         sitekey = None
         if len(url_subsite) < 2:
-            sitekey = '/'
+            sitekey = '/' #root
         else:
-            sitekey = url_subsite[1]
+            sitekey = url_subsite[1] #sub-url
 
-        if host in self.sites:
-            if sitekey in self.sites[host]:
-                self.sites[host][sitekey].inc()
+        self.lock.acquire()
+        try:
+            if host in self.sites:
+                if sitekey in self.sites[host]:
+                    self.sites[host][sitekey].inc()
+                else:
+                    self.sites[host][sitekey] = Counter(MON_TIME)
+                    self.sites[host][sitekey].inc()
             else:
-                self.sites[host][sitekey] = Counter(MON_TIME)
+                self.sites[host] = {sitekey: Counter(MON_TIME)}
                 self.sites[host][sitekey].inc()
-        else:
-            self.sites[host] = {sitekey: Counter(MON_TIME)}
-            self.sites[host][sitekey].inc()
 
-        hits = self.count_hits(host)
-        if hits > self.leadcnt:
-            self.leadcnt = hits
-            self.leading = host
+            self.total.inc()
+
+            hits = self.count_hits(host)
+            if hits > self.leadcnt:
+                self.leadcnt = hits
+                self.leading = host
+
+            self.total.process_alerts()
+        finally:
+            self.lock.release()
+
+
+    def check_loaders(self):
+        # do our thing = these should be fine.
+        self.explore_leading()
+        self.total.process_alerts()
+        threading.Timer(10.0, self.check_loaders).start()
 
     def process(self, packet):
         if http.HTTPRequest in packet:
             host = packet[http.HTTPRequest].Host
             path = packet[http.HTTPRequest].Path
             self.monitor_site(host, path)
-            print 'packet processed'
 
-datadogmon = DatadogMon()
+datadogmon = DatadogMon(1)
 
 def sniff_cb(packet):
     global datadogmon
@@ -160,6 +206,8 @@ def sniff_cb(packet):
 
 def main(argv):
     ifc = argv[0]
+    global datadogmon
+    datadogmon.check_loaders()
     scapy.sniff(iface=ifc, filter="port 80", prn=sniff_cb)
 
 
