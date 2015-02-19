@@ -49,8 +49,12 @@ class Counter(object):
         self.alerts = []
 
     def zero(self, start, end):
-        start_idx = start % self.size
-        end_idx = end % self.size
+        if (end-start) > self.size:
+            start_idx = 0
+            end_idx = self.size - 1
+        else:
+            start_idx = start % self.size
+            end_idx = end % self.size
 
         #circle round
         if end_idx < start_idx:
