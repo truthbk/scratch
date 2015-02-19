@@ -97,19 +97,25 @@ class Counter(object):
     def process_alerts(self):
         active = []
         for alert in self.alerts:
+            ts = int(time.time())
+            if self.last_ts < ts:
+                # zero some stuff out...
+                self.zero(self.last_ts+1, ts)
+                self.last_ts = ts
+
             if alert.triggered:
                 if self.last_ts >= alert.ts + alert.duration:
                     avg = self.csum_lapse(alert.duration) / alert.duration
                     if avg < alert.threshold:
                         alert.reset()
                         print 'Traffic restored to normalcy - hits %d, reset at: %d' \
-                            % (self.csum_lapse(lapse), self.last_ts)
+                            % (self.csum_lapse(alert.duration), self.last_ts)
             else:
                 avg = self.csum_lapse(alert.duration) / alert.duration
                 if avg >= alert.threshold:
                     alert.trigger()
                     print 'High traffic generated an alert - hits %d, triggered at: %d' \
-                          % (self.csum_lapse(lapse), self.last_ts)
+                          % (self.csum_lapse(alert.duration), self.last_ts)
 
             if alert.triggered:
                 active.append(alert)
@@ -139,13 +145,17 @@ class DatadogMon(object):
 
         return cnt
 
+    def general_stats(self):
+        print 'Total hit volume: %d' % self.total.alltime
+
     def explore_leading(self):
         self.lock.acquire()
         try:
             if self.leading is not None:
+                print 'Leading load URL: %s' % self.leading
 
                 for site in self.sites[self.leading]:
-                    print '%s / %s : %d hits' \
+                    print '\t%s/%s : %d hits' \
                           % (self.leading, site, self.sites[self.leading][site].alltime)
         finally:
             self.lock.release()
@@ -153,10 +163,11 @@ class DatadogMon(object):
     def monitor_site(self, host, path):
         url_subsite = path.split('/')
         url_subsite = filter(None, url_subsite)
-        if url_subsite[0] == 'http:' or url_subsite[0] == 'https:':
-            url_subsite = url_subsite[1:]
 
         sitekey = None
+        if url_subsite and (url_subsite[0] == 'http:' or url_subsite[0] == 'https:'):
+            url_subsite = url_subsite[1:]
+
         if len(url_subsite) < 2:
             sitekey = '/' #root
         else:
@@ -188,6 +199,7 @@ class DatadogMon(object):
 
     def check_loaders(self):
         # do our thing = these should be fine.
+        self.general_stats()
         self.explore_leading()
         self.total.process_alerts()
         threading.Timer(10.0, self.check_loaders).start()
