@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 import time
+import datetime
 import urlparse
 import sys
 import threading
+import urwid
 
 try:
     import scapy.all as scapy
@@ -18,6 +20,23 @@ except ImportError:
     from scapy.layers import http
 
 MON_TIME = 3600
+
+alerts_widget = urwid.Text("Alerts:\n")
+updates_widget = urwid.Text("Updates:\n")
+frame_widget = urwid.Frame(
+    header=updates_widget,
+    body=urwid.Filler(alerts_widget, valign='bottom'),
+    focus_part='header')
+
+refreshthread = None
+
+def exit_on_q(key):
+    if key == 'q':
+        if refreshthread:
+            refreshthread.join(1.0)
+        raise urwid.ExitMainLoop()
+
+loop = urwid.MainLoop(frame_widget, unhandled_input=exit_on_q)
 
 class Alert(object):
     def __init__(self, threshold, duration):
@@ -100,6 +119,7 @@ class Counter(object):
 
     def process_alerts(self):
         active = []
+        global alerts_widget
         for alert in self.alerts:
             ts = int(time.time())
             if self.last_ts < ts:
@@ -107,19 +127,24 @@ class Counter(object):
                 self.zero(self.last_ts+1, ts)
                 self.last_ts = ts
 
+            timestr = datetime.datetime.fromtimestamp(
+                    self.last_ts).strftime('%Y-%m-%d %H:%M:%S')
+
             if alert.triggered:
                 if self.last_ts >= alert.ts + alert.duration:
                     avg = self.csum_lapse(alert.duration) / alert.duration
                     if avg < alert.threshold:
                         alert.reset()
-                        print 'Traffic restored to normalcy - hits %d, reset at: %d' \
-                            % (self.csum_lapse(alert.duration), self.last_ts)
+                        alerts_widget.set_text(alerts_widget.text +
+                                "Traffic restored to normalcy - hits %d, reset at: %s\n" \
+                                        % (self.csum_lapse(alert.duration), timestr))
             else:
                 avg = self.csum_lapse(alert.duration) / alert.duration
                 if avg >= alert.threshold:
                     alert.trigger()
-                    print 'High traffic generated an alert - hits %d, triggered at: %d' \
-                          % (self.csum_lapse(alert.duration), self.last_ts)
+                    alerts_widget.set_text(alerts_widget.text +
+                            "High traffic generated an alert - hits %d, triggered at: %s\n" \
+                                    % (self.csum_lapse(alert.duration), timestr))
 
             if alert.triggered:
                 active.append(alert)
@@ -150,18 +175,21 @@ class DatadogMon(object):
         return cnt
 
     def general_stats(self):
-        print 'Total hit volume: %d' % self.total.alltime
+        #print 'Total hit volume: %d' % self.total.alltime
+        pass
 
     def explore_leading(self):
         self.lock.acquire()
         try:
+            output = ""
             if self.leading is not None:
-                print 'Leading load URL: %s' % self.leading
+                output = "Leading load URL: %s\n" % self.leading
 
                 for site in self.sites[self.leading]:
-                    print '\t%s/%s : %d hits' \
+                    output += "----%s/%s : %d hits\n" \
                           % (self.leading, site, self.sites[self.leading][site].alltime)
         finally:
+            updates_widget.set_text(output)
             self.lock.release()
 
     def monitor_site(self, host, path):
@@ -214,18 +242,44 @@ class DatadogMon(object):
             path = packet[http.HTTPRequest].Path
             self.monitor_site(host, path)
 
+
 datadogmon = DatadogMon(1)
 
 def sniff_cb(packet):
     global datadogmon
     datadogmon.process(packet)
 
+def sniffhttp(ifc):
+    global datadogmon
+    scapy.sniff(iface=ifc, filter="port 80", prn=lambda x : datadogmon.process(x))
+
+def threaded_sniff(iface):
+    sniffer = threading.Thread(target = sniffhttp, args = (iface,))
+    sniffer.start()
+    return sniffer;
+
+def threaded_refresh():
+    refresher = threading.Thread(target = refresh)
+    refresher.start()
+    return refresher;
+
+def refresh():
+    global loop
+    while 1:
+        time.sleep(1)
+        loop.draw_screen()
+
 def main(argv):
     ifc = argv[0]
-    global datadogmon
-    datadogmon.check_loaders()
-    scapy.sniff(iface=ifc, filter="port 80", prn=sniff_cb)
 
+    global datadogmon
+    global refreshthread
+    datadogmon.check_loaders()
+    sniffthread = threaded_sniff(ifc)
+    refreshthread = threaded_refresh()
+    loop.run()
+    refreshthread.join(0.0)
+    sniffthread.join(0.0)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
