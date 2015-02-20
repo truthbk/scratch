@@ -1,13 +1,18 @@
 #!/bin/bash
 
-if [[ $# -ne 4 ]]; then
+usage() {
+	echo -e "usage:\t$0 <interface> <iterations> <pcap_file>"
+}
+
+if [[ $# -ne 3 ]]; then
 	echo "Illegal number of parameters"
-	usage()
+	usage
+	exit 1
 fi
 
-PCAP=$1
-IFACE=$2
-TIMES=$3
+IFACE=$1
+TIMES=$2
+PCAP=$3
 
 tcpreplay -i$IFACE -l$TIMES $PCAP
 
