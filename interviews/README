@@ -6,6 +6,10 @@ scapy-http
 urwid
 tcpreplay (for testing)
 
+- Usage -
+sudo ./datadogmon.py <iface>
+    - where <iface> is the interface you wish to sniff on.
+
 - Environment - 
 This was tested on linux (Ubuntu 14.04), but should be just fine on OSX.
 Run as sudo - por scapy/pypcap to sniff the relevant interface.
