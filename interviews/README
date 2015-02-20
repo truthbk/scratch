@@ -1,0 +1,53 @@
+Datadog Monitor
+
+- Requirements - 
+scapy
+scapy-http
+urwid
+tcpreplay (for testing)
+
+- Environment - 
+This was tested on linux (Ubuntu 14.04), but should be just fine on OSX.
+Run as sudo - por scapy/pypcap to sniff the relevant interface.
+Hit 'q' to quit the interface (you might have to ctrl-c as well after that :S ).
+
+- Python relevant - 
+scapy, scapy-http and urwid should be easy to install via pip install.
+
+- Design - 
+Bottom down approach, including Counter, and Alert classes. 
+Datadogmon class contains most of the logic and packet processing. Here we store counters in dictionaries and 
+perform the lookups and break down of per-site status using a hierarchy of Dictionaries with counters at its leaves.
+The counter class allows to define alerts for themselves, defining a threshold and duration during which the threshold
+value should be surpassed on average. Counters process alerts.
+
+The GUI is *very* rudimentary, updates regarding hits to sites, etc on the top half, and alerts on the bottom half.
+There is plenty, plenty of room for improvement here, currently it's just output, no possibility of interaction. I'm
+not urwid expert but I believe the Text Widgets do not allow paging, so that should definitely be implemented.
+
+Due to the lack of interactivity certain things have been hardcoded. It would be trivial to make these into command-
+line arguments, but the right thing to do would be to allow to install alerts and define thresholds from the GUI. I
+believe that is beyond the scope of the exercise.
+
+Due to scapy.sniff() and urwid's loop.run() being blocking, I have had to resort to threads, something I wanted to
+avoid, but unfortunately I went down that road and wanted to get this prototype ready. There is one final thread 
+that periodically refreshes the canvas.
+These threads are making the teardown a little ugly, particularly the scapy.sniff() thread. I should probably go
+into the scapy documentation to sort that one out, but it's currently a WIP. The other threads are terminated
+succesfully.
+
+- Stat Recollection -
+There are so many stats we could collect, and these haven't been implemented due to time constraints:
+    - packets/second
+    - bw/second
+    - avg packet size
+    - Tracking HTTP responses and error codes.
+    - Tracking latency between requests and responses per site.
+    - Sniffing on multiple interfaces.
+    - L2 stats
+    - L3 stats
+    - ...
+These would be displayed on the Updates panel - the top half.
+    
+- NOTES - 
+This is just a quick prototype, implemented in python for speed and simplicity (although not my strongest language).
