@@ -29,11 +29,19 @@ frame_widget = urwid.Frame(
     focus_part='header')
 
 refreshthread = None
+sniffthread = None
+running = True
 
 def exit_on_q(key):
+    global running
+
     if key == 'q':
         if refreshthread:
-            refreshthread.join(1.0)
+            running = False
+            refreshthread.join(2)
+        if sniffthread:
+            running = False
+            sniffthread.join(0)
         raise urwid.ExitMainLoop()
 
 loop = urwid.MainLoop(frame_widget, unhandled_input=exit_on_q)
@@ -265,7 +273,8 @@ def threaded_refresh():
 
 def refresh():
     global loop
-    while 1:
+    global running
+    while running:
         time.sleep(1)
         loop.draw_screen()
 
@@ -274,12 +283,11 @@ def main(argv):
 
     global datadogmon
     global refreshthread
+    global sniffthread
     datadogmon.check_loaders()
     sniffthread = threaded_sniff(ifc)
     refreshthread = threaded_refresh()
     loop.run()
-    refreshthread.join(0.0)
-    sniffthread.join(0.0)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
