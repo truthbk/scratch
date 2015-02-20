@@ -10,6 +10,11 @@ if [[ $# -ne 3 ]]; then
 	exit 1
 fi
 
+if [[ $EUID -ne 0 ]]; then 
+	echo "Please run as root"
+	exit 1
+fi
+
 IFACE=$1
 TIMES=$2
 PCAP=$3
